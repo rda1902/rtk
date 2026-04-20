@@ -3379,15 +3379,15 @@ mod tests {
     fn test_rewrite_mix_test() {
         assert_eq!(
             rewrite_command("mix test", &[]),
-            Some("rtk mix-test".into())
+            Some("rtk mix test".into())
         );
         assert_eq!(
             rewrite_command("mix test --trace", &[]),
-            Some("rtk mix-test --trace".into())
+            Some("rtk mix test --trace".into())
         );
         assert_eq!(
             rewrite_command("mix test test/my_app/user_test.exs:10", &[]),
-            Some("rtk mix-test test/my_app/user_test.exs:10".into())
+            Some("rtk mix test test/my_app/user_test.exs:10".into())
         );
     }
 

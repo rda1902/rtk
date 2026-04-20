@@ -673,11 +673,10 @@ enum Commands {
         args: Vec<String>,
     },
 
-    /// Elixir mix test with compact output
-    MixTest {
-        /// mix test arguments (e.g., test/my_app/my_test.exs:10, --trace)
-        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
-        args: Vec<String>,
+    /// Elixir mix commands with compact output
+    Mix {
+        #[command(subcommand)]
+        command: MixCommands,
     },
 
     /// Pip package manager with compact output (auto-detects uv)
@@ -1262,6 +1261,19 @@ enum GtCommands {
         args: Vec<String>,
     },
     /// Passthrough: git-passthrough detection or direct gt execution
+    #[command(external_subcommand)]
+    Other(Vec<OsString>),
+}
+
+#[derive(Debug, Subcommand)]
+enum MixCommands {
+    /// Elixir mix test with compact output
+    Test {
+        /// mix test arguments (e.g., test/my_app/my_test.exs:10, --trace)
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        args: Vec<String>,
+    },
+    /// Passthrough: runs any unsupported mix subcommand directly
     #[command(external_subcommand)]
     Other(Vec<OsString>),
 }
@@ -2040,7 +2052,12 @@ fn run_cli() -> Result<i32> {
 
         Commands::Rspec { args } => rspec_cmd::run(&args, cli.verbose)?,
 
-        Commands::MixTest { args } => mix_test_cmd::run(&args, cli.verbose)?,
+        Commands::Mix { command } => match command {
+            MixCommands::Test { args } => mix_test_cmd::run(&args, cli.verbose)?,
+            MixCommands::Other(args) => {
+                crate::core::runner::run_passthrough("mix", &args, cli.verbose)?
+            }
+        },
 
         Commands::Pip { args } => pip_cmd::run(&args, cli.verbose)?,
 
@@ -2391,7 +2408,7 @@ fn is_operational_command(cmd: &Commands) -> bool {
             | Commands::Rake { .. }
             | Commands::Rubocop { .. }
             | Commands::Rspec { .. }
-            | Commands::MixTest { .. }
+            | Commands::Mix { .. }
             | Commands::Pip { .. }
             | Commands::Go { .. }
             | Commands::GolangciLint { .. }

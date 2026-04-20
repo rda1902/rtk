@@ -673,7 +673,7 @@ pub const RULES: &[RtkRule] = &[
     },
     RtkRule {
         pattern: r"^mix\s+test(\s|$)",
-        rtk_cmd: "rtk mix-test",
+        rtk_cmd: "rtk mix test",
         rewrite_prefixes: &["mix test"],
         category: "Build",
         savings_pct: 70.0,
