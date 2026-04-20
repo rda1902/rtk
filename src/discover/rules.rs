@@ -672,6 +672,15 @@ pub const RULES: &[RtkRule] = &[
         subcmd_status: &[],
     },
     RtkRule {
+        pattern: r"^mix\s+test(\s|$)",
+        rtk_cmd: "rtk mix-test",
+        rewrite_prefixes: &["mix test"],
+        category: "Build",
+        savings_pct: 70.0,
+        subcmd_savings: &[],
+        subcmd_status: &[],
+    },
+    RtkRule {
         pattern: r"^mvn\s+(compile|package|clean|install)\b",
         rtk_cmd: "rtk mvn",
         rewrite_prefixes: &["mvn"],

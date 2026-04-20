@@ -9,6 +9,7 @@ mod parser;
 // Re-export command modules for routing
 use cmds::cloud::{aws_cmd, container, curl_cmd, psql_cmd, wget_cmd};
 use cmds::dotnet::{binlog, dotnet_cmd, dotnet_format_report, dotnet_trx};
+use cmds::elixir::mix_test_cmd;
 use cmds::git::{diff_cmd, gh_cmd, git, gt_cmd};
 use cmds::go::{go_cmd, golangci_cmd};
 use cmds::js::{
@@ -668,6 +669,13 @@ enum Commands {
     /// RSpec test runner with compact output (Rails/Ruby)
     Rspec {
         /// RSpec arguments (e.g., spec/models, --tag focus)
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        args: Vec<String>,
+    },
+
+    /// Elixir mix test with compact output
+    MixTest {
+        /// mix test arguments (e.g., test/my_app/my_test.exs:10, --trace)
         #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
         args: Vec<String>,
     },
@@ -2032,6 +2040,8 @@ fn run_cli() -> Result<i32> {
 
         Commands::Rspec { args } => rspec_cmd::run(&args, cli.verbose)?,
 
+        Commands::MixTest { args } => mix_test_cmd::run(&args, cli.verbose)?,
+
         Commands::Pip { args } => pip_cmd::run(&args, cli.verbose)?,
 
         Commands::Go { command } => match command {
@@ -2381,6 +2391,7 @@ fn is_operational_command(cmd: &Commands) -> bool {
             | Commands::Rake { .. }
             | Commands::Rubocop { .. }
             | Commands::Rspec { .. }
+            | Commands::MixTest { .. }
             | Commands::Pip { .. }
             | Commands::Go { .. }
             | Commands::GolangciLint { .. }

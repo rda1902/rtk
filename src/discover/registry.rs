@@ -3374,4 +3374,32 @@ mod tests {
             Some("rtk git log | head | tail && rtk git status".into())
         );
     }
+
+    #[test]
+    fn test_rewrite_mix_test() {
+        assert_eq!(
+            rewrite_command("mix test", &[]),
+            Some("rtk mix-test".into())
+        );
+        assert_eq!(
+            rewrite_command("mix test --trace", &[]),
+            Some("rtk mix-test --trace".into())
+        );
+        assert_eq!(
+            rewrite_command("mix test test/my_app/user_test.exs:10", &[]),
+            Some("rtk mix-test test/my_app/user_test.exs:10".into())
+        );
+    }
+
+    #[test]
+    fn test_rewrite_mix_compile_unchanged() {
+        assert_eq!(
+            rewrite_command("mix compile", &[]),
+            Some("rtk mix compile".into())
+        );
+        assert_eq!(
+            rewrite_command("mix format", &[]),
+            Some("rtk mix format".into())
+        );
+    }
 }
