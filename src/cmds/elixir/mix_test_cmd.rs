@@ -16,12 +16,37 @@ lazy_static! {
         Regex::new(r"(\d+)\s+tests?,\s*(\d+)\s+failures?").unwrap();
     static ref RE_FINISHED_IN: Regex = Regex::new(r"^Finished in \d").unwrap();
     static ref RE_RANDOM_SEED: Regex = Regex::new(r"^Randomized with seed \d+").unwrap();
-    static ref RE_FAILURE_HEADER: Regex =
-        Regex::new(r"(?i)^\s*\d+\)\s+(?:failure|error)\s*:").unwrap();
+    static ref RE_FAILURE_HEADER: Regex = Regex::new(r"^\s*\d+\)\s").unwrap();
+    static ref RE_LOG_NOISE: Regex = Regex::new(r"^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}").unwrap();
+    static ref RE_LOG_TIME_ONLY: Regex = Regex::new(r"^\d{2}:\d{2}:\d{2}\.\d+\s+\[").unwrap();
 }
 
 fn is_failure_header(line: &str) -> bool {
     RE_FAILURE_HEADER.is_match(line)
+}
+
+fn is_log_noise(line: &str) -> bool {
+    let t = line.trim();
+    if RE_LOG_NOISE.is_match(t) {
+        return true;
+    }
+    if t.starts_with('.') && t.contains(" pid=<") {
+        return true;
+    }
+    if RE_LOG_TIME_ONLY.is_match(t) {
+        return true;
+    }
+    t.starts_with("Running ExUnit")
+}
+
+fn is_test_progress(line: &str) -> bool {
+    let t = line.trim();
+    !t.is_empty() && t.chars().all(|c| matches!(c, '.' | 'F' | 'E' | '*' | 'S'))
+}
+
+fn is_failure_noise(line: &str) -> bool {
+    let t = line.trim();
+    is_log_noise(t) || is_test_progress(t) || t.starts_with("The following output was logged:")
 }
 
 fn is_deps_backtrace(line: &str) -> bool {
@@ -125,7 +150,10 @@ fn filter_mix_test_output(output: &str) -> String {
                 } else if trimmed.is_empty() && !current_failure.is_empty() {
                     failures.push(current_failure.join("\n"));
                     current_failure.clear();
-                } else if !trimmed.is_empty() && !is_deps_backtrace(trimmed) {
+                } else if !trimmed.is_empty()
+                    && !is_deps_backtrace(trimmed)
+                    && !is_failure_noise(trimmed)
+                {
                     current_failure.push(line.to_string());
                 }
             }
@@ -201,7 +229,8 @@ fn build_mix_test_summary(summary_line: &str, failures: &[String], clean: &str) 
     result.push_str("═══════════════════════════════════════\n");
 
     if failures.is_empty() {
-        return result.trim().to_string();
+        let tail = fallback_tail(clean, "mix-test", 10);
+        return format!("{}\n{}", result.trim(), tail);
     }
 
     result.push('\n');
@@ -242,6 +271,10 @@ fn compact_failure(block: &str) -> String {
         }
 
         if t.starts_with("stacktrace:") {
+            continue;
+        }
+
+        if is_failure_noise(t) {
             continue;
         }
 
@@ -524,7 +557,6 @@ test/feature_{i}_test.exs:{ln}: (test)\n\n",
     fn test_filter_mix_test_with_excluded() {
         let output = "\
 ......
-
 Finished in 0.05 seconds
 6 tests, 0 failures, 2 excluded
 
@@ -534,5 +566,106 @@ Randomized with seed 584732
         let result = filter_mix_test_output(output);
         assert!(result.contains("✓ mix test:"));
         assert!(result.contains("0 failures"));
+    }
+
+    #[test]
+    fn test_filter_real_exunit_format() {
+        let output = "\
+.2026-04-20 20:48:27.471 pid=<0.503.0> [info] [Elixir.Transports.Widget] calling webhook
+.2026-04-20 20:48:27.481 pid=<0.503.0> [info] [Elixir.Transports.Widget] outbox stuff
+.
+
+  1) test prepare_request/2 attachment .txt (Transports.WidgetTest)
+     test/gateway/core/transports/widget_test.exs:165
+     Assertion with == failed
+     code:  assert attachments.original_file_name == \"document.txt1\"
+     left:  \"document.txt\"
+     right: \"document.txt1\"
+     stacktrace:
+       test/gateway/core/transports/widget_test.exs:193: (test)
+
+2026-04-20 20:48:27.742 pid=<0.530.0> [info] [Elixir.Transports.Widget] calling webhook
+.2026-04-20 20:48:27.748 pid=<0.541.0> [info] [Elixir.Transports.Widget] calling read
+.
+
+  2) test send_read_status/2 handles successful read status (Transports.WidgetTest)
+     test/gateway/core/transports/widget_test.exs:132
+     Assertion with == failed
+     code:  assert result.status == 400
+     left:  200
+     right: 400
+     stacktrace:
+       test/gateway/core/transports/widget_test.exs:147: (test)
+
+     The following output was logged:
+     
+     20:48:27.874 [info] [Elixir.Transports.Widget] calling livechat read
+     20:48:27.874 [info] [Elixir.Transports.Widget] params %{\"key\" => \"val\"}
+     
+2026-04-20 20:48:27.988 pid=<0.557.0> [info] [Elixir.Transports.Widget] hook params JSON
+.2026-04-20 20:48:27.994 pid=<0.567.0> [info] [Elixir.Transports.Widget] calling read
+.
+Finished in 1.0 seconds (0.00s async, 1.0s sync)
+9 tests, 2 failures
+";
+
+        let result = filter_mix_test_output(output);
+        assert!(result.contains("2 failures"), "should contain failure count: {}", result);
+        assert!(result.contains("❌"), "should have failure markers: {}", result);
+        assert!(
+            result.contains("test prepare_request"),
+            "should show first test name: {}",
+            result
+        );
+        assert!(
+            result.contains("test send_read_status"),
+            "should show second test name: {}",
+            result
+        );
+        assert!(
+            result.contains("widget_test.exs"),
+            "should show file location: {}",
+            result
+        );
+        assert!(
+            result.contains("Assertion with == failed"),
+            "should show error type: {}",
+            result
+        );
+        assert!(
+            !result.contains("pid=<"),
+            "should strip Logger noise: {}",
+            result
+        );
+        assert!(
+            !result.contains("calling webhook"),
+            "should strip log messages: {}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_filter_exunit_format_no_prefix() {
+        let output = "\
+..F...
+
+  1) test greets the world (MyApp.GreeterTest)
+     test/my_app/greeter_test.exs:5
+     Assertion with == failed
+     code:  assert Greeter.greet() == \"hello\"
+     left:  \"hi\"
+     right: \"hello\"
+     stacktrace:
+       test/my_app/greeter_test.exs:6: (test)
+
+Finished in 0.08 seconds
+2 doctests, 6 tests, 1 failures
+";
+
+        let result = filter_mix_test_output(output);
+        assert!(result.contains("1 failures"));
+        assert!(result.contains("❌"));
+        assert!(result.contains("greeter_test.exs"));
+        assert!(result.contains("test greets the world"));
     }
 }
